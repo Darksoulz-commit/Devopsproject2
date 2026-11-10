@@ -1,0 +1,14 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Private SSH keys
+*.pem
+
+# Logs
+*.log
+
+# Node modules
+node_modules/
