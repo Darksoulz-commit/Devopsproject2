@@ -2,55 +2,178 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'AWS_REGION', defaultValue: 'us-east-1', description: 'Enter your AWS region')
-        string(name: 'AWS_ACCOUNT_ID', defaultValue: '123456789000', description: 'Enter your AWS account ID')
-        string(name: 'ECR_REPO_NAME', defaultValue: 'amazon-prime', description: 'Enter repository name')
-        string(name: 'VERSION', defaultValue: 'latest', description: 'Enter version number')
-        string(name: 'CLUSTER_NAME', defaultValue: 'devops-project-cluster', description: 'Enter your EKS cluster name')
+        string(
+            name: 'AWS_REGION',
+            defaultValue: 'ap-south-1',
+            description: 'Enter your AWS region'
+        )
+
+        string(
+            name: 'AWS_ACCOUNT_ID',
+            defaultValue: '050670421700',
+            description: 'Enter your AWS account ID'
+        )
+
+        string(
+            name: 'ECR_REPO_NAME',
+            defaultValue: 'amazon-prime',
+            description: 'Enter ECR repository name'
+        )
+
+        string(
+            name: 'VERSION',
+            defaultValue: 'latest',
+            description: 'Enter Docker image version'
+        )
+
+        string(
+            name: 'CLUSTER_NAME',
+            defaultValue: 'devops-project-cluster',
+            description: 'Enter your EKS cluster name'
+        )
+    }
+
+    environment {
+        AWS_DEFAULT_REGION = "${params.AWS_REGION}"
     }
 
     stages {
-        stage("Clone GitHub Repository") {
+
+        // 1. Clone GitHub Repository
+        stage('1. Clone GitHub Repository') {
             steps {
-                // Clone the repository containing deployment and service files
-                git branch: 'main', url: 'https://github.com/pandacloud1/DevopsProject2.git'
+                git branch: 'main',
+                    url: 'https://github.com/Darksoulz-commit/Devopsproject2.git'
             }
         }
-		
-        stage("Login to EKS") {
+
+        // 2. Login to AWS and Connect to EKS
+        stage('2. Login to EKS') {
             steps {
-                script {
-                    withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'),
-                                     string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
-                        // Update kubeconfig
-                        sh "aws eks --region ${params.AWS_REGION} update-kubeconfig --name ${params.CLUSTER_NAME}"
-                        
-                    }
+                withCredentials([
+                    string(
+                        credentialsId: 'access-key',
+                        variable: 'AWS_ACCESS_KEY_ID'
+                    ),
+                    string(
+                        credentialsId: 'secret-key',
+                        variable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh '''
+                        echo "Checking AWS Identity..."
+
+                        aws sts get-caller-identity
+
+                        echo "Updating EKS kubeconfig..."
+
+                        aws eks update-kubeconfig \
+                            --region "$AWS_REGION" \
+                            --name "$CLUSTER_NAME"
+
+                        echo "Checking Kubernetes connection..."
+
+                        kubectl get nodes
+                    '''
                 }
             }
         }
 
-		
-      stage ("Select Image Version") {
+        // 3. Select Docker Image Version
+        stage('3. Select Image Version') {
             steps {
                 script {
-                        def ECR_IMAGE_NAME = "${params.AWS_ACCOUNT_ID}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:${params.VERSION}"
-                        sh "sed -i 's|image: .*|image: ${ECR_IMAGE_NAME}|' k8s_files/deployment.yaml"
-                }	
-            }
-        }		
+                    env.ECR_IMAGE_NAME =
+                        "${params.AWS_ACCOUNT_ID}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:${params.VERSION}"
 
-        // ----------------------------------------------------
-	// USE THIS STAGE TO DEPLOY IMAGE AS PER THE VERSION NO
-        // ----------------------------------------------------
-        stage("Deploy to EKS") {
-            steps {
-                script {
-                        // Apply the deployment and service files
-                        sh "kubectl apply -f k8s_files/deployment.yaml"
-                        sh "kubectl apply -f k8s_files/service.yaml"
+                    echo "Selected Docker Image: ${env.ECR_IMAGE_NAME}"
+
+                    sh '''
+                        echo "Checking deployment YAML..."
+
+                        test -f k8s_files/deployment.yaml
+
+                        sed -i -E \
+                        "s|^([[:space:]]*image:[[:space:]]*).*$|\\1${ECR_IMAGE_NAME}|" \
+                        k8s_files/deployment.yaml
+
+                        echo "Updated image in deployment.yaml"
+
+                        grep -n 'image:' k8s_files/deployment.yaml
+                    '''
                 }
             }
+        }
+
+        // 4. Verify Docker Image in ECR
+        stage('4. Verify ECR Image') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'access-key',
+                        variable: 'AWS_ACCESS_KEY_ID'
+                    ),
+                    string(
+                        credentialsId: 'secret-key',
+                        variable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh '''
+                        aws ecr describe-images \
+                            --repository-name "$ECR_REPO_NAME" \
+                            --image-ids imageTag="$VERSION" \
+                            --region "$AWS_REGION"
+                    '''
+                }
+            }
+        }
+
+        // 5. Deploy Application to EKS
+        stage('5. Deploy to EKS') {
+            steps {
+                sh '''
+                    echo "Deploying application..."
+
+                    kubectl apply -f k8s_files/deployment.yaml
+
+                    kubectl apply -f k8s_files/service.yaml
+
+                    echo "Deployment submitted successfully."
+                '''
+            }
+        }
+
+        // 6. Verify Kubernetes Deployment
+        stage('6. Verify Deployment') {
+            steps {
+                sh '''
+                    echo "Checking Kubernetes deployments..."
+
+                    kubectl get deployments
+
+                    echo "Checking pods..."
+
+                    kubectl get pods
+
+                    echo "Checking services..."
+
+                    kubectl get services
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Application successfully deployed to AWS EKS!'
+        }
+
+        failure {
+            echo 'EKS deployment failed. Check the Jenkins console output.'
+        }
+
+        always {
+            echo 'EKS deployment pipeline execution completed.'
         }
     }
 }
