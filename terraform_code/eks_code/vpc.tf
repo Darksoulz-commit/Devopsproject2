@@ -32,7 +32,7 @@ module "vpc" {
   # Private Subnet Tags
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = "1"
-    Type                               = "Private"
+    Type                              = "Private"
   }
 
   # Intra Subnet Tags
