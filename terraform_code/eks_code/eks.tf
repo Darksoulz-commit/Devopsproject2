@@ -33,9 +33,9 @@ module "eks" {
     zero-node = {
       name = "Zero-Node"
 
-      min_size     = 2
-      max_size     = 4
-      desired_size = 2
+      min_size     = 1
+      max_size     = 2
+      desired_size = 1
 
       # EC2 Instance Configuration
       instance_types = ["c7i-flex.large"]

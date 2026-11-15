@@ -1,37 +1,47 @@
+```bash
 #!/bin/bash
-# This script is used to get the argocd, prometheus & grafana urls & credentials
+set -euo pipefail
 
-aws configure
-aws eks update-kubeconfig --region "us-east-1" --name "amazon-prime-cluster"
+AWS_REGION="ap-south-1"
+CLUSTER_NAME="amazon-prime-cluster"
 
-# ArgoCD Access
-argo_url=$(kubectl get svc -n argocd | grep argocd-server | awk '{print$4}' | head -n 1)
-argo_initial_password=$(argocd admin initial-password -n argocd)
+echo "Connecting to EKS cluster..."
 
-# ArgoCD Credentials
-argo_user="admin"
+aws eks update-kubeconfig \
+  --region "$AWS_REGION" \
+  --name "$CLUSTER_NAME"
 
-argo_password=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode)
+echo "Getting application URLs and credentials..."
 
-# Prometheus and Grafana URLs and credentials
-prometheus_url=$(kubectl get svc -n prometheus | grep stable-kube-prometheus-sta-prometheus | awk '{print $4}')
-grafana_url=$(kubectl get svc -n prometheus | grep stable-grafana | awk '{print $4}')
-grafana_user="admin"
-grafana_password=$(kubectl get secret stable-grafana -n prometheus -o jsonpath="{.data.admin-password}" | base64 --decode)
+# ArgoCD
+ARGO_HOST=$(kubectl get svc argocd-server -n argocd \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
-# Print or use these variables
+ARGO_USER="admin"
+ARGO_PASSWORD=$(kubectl get secret argocd-initial-admin-secret \
+  -n argocd -o jsonpath='{.data.password}' | base64 --decode)
+
+# Prometheus
+PROMETHEUS_HOST=$(kubectl get svc monitoring-kube-prometheus-prometheus \
+  -n prometheus -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+# Grafana
+GRAFANA_HOST=$(kubectl get svc monitoring-grafana \
+  -n prometheus -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+GRAFANA_USER="admin"
+GRAFANA_PASSWORD=$(kubectl get secret monitoring-grafana \
+  -n prometheus -o jsonpath='{.data.admin-password}' | base64 --decode)
+
 echo "------------------------"
-echo "ArgoCD URL: $argo_url"
-echo "ArgoCD User: $argo_user"
-echo "ArgoCD Initial Password: $argo_initial_password" | head -n 1
+echo "ArgoCD URL: https://${ARGO_HOST}"
+echo "ArgoCD User: ${ARGO_USER}"
+echo "ArgoCD Password: ${ARGO_PASSWORD}"
 echo
-echo "Prometheus URL: $prometheus_url":9090
+echo "Prometheus URL: http://${PROMETHEUS_HOST}:9090"
 echo
-echo "Grafana URL: $grafana_url"
-echo "Grafana User: $grafana_user"
-echo "Grafana Password: $grafana_password"
+echo "Grafana URL: http://${GRAFANA_HOST}"
+echo "Grafana User: ${GRAFANA_USER}"
+echo "Grafana Password: ${GRAFANA_PASSWORD}"
 echo "------------------------"
-
-# Run below commands
-# chmod a+x access.sh
-# ./access.sh
+``` cd
